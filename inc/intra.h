@@ -22,13 +22,13 @@ public:
     Predictor(int size): up_available(false), left_available(false), up_right_available(false), all_available(false) {
       switch (size) {
         case 4:
-          this->pred_pel.reserve(13);
+          this->pred_pel.resize(13);
           break;
         case 8:
-          this->pred_pel.reserve(17);
+          this->pred_pel.resize(17);
           break;
         case 16:
-          this->pred_pel.reserve(33);
+          this->pred_pel.resize(33);
           break;
       }
     }
