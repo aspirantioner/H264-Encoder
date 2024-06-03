@@ -118,7 +118,8 @@ PadFrame Reader::get_padded_frame()
 	return pf;
 }
 
-Frame Reader::get_one_frame(){
+Frame Reader::get_one_frame()
+{
 	Frame frame;
 	frame.width = this->width;
 	frame.height = this->height;
@@ -128,9 +129,12 @@ Frame Reader::get_one_frame(){
 	int cnt_mbs = 0;
 	int luma_size = frame.height * frame.width;
 
-	std::vector<int> Y(luma_size);
-	std::vector<int> Cb(luma_size / 4);
-	std::vector<int> Cr(luma_size / 4);
+	frame.Y.resize(luma_size);
+	frame.Cb.resize(luma_size / 4);
+	frame.Cr.resize(luma_size / 4);
+	auto &Y = frame.Y;
+	auto &Cb = frame.Cb;
+	auto &Cr = frame.Cr;
 	char yuv;
 	for (int i = 0; i < luma_size; i++)
 	{
@@ -236,7 +240,7 @@ void Writer::write_slice(const int frame_num, Frame &frame)
 	Bitstream rbsp = slice_layer_without_partitioning_rbsp(frame_num, frame);
 	rbsp += Bitstream((std::uint8_t)0x80, 8);
 
-	NALUnit nal_unit(NALRefIdc::HIGHEST, NALType::IDR, rbsp.rbsp_to_ebsp());
+	NALUnit nal_unit(NALRefIdc::HIGHEST, (frame_num == 0 ? NALType::IDR : NALType::SLICE), rbsp.rbsp_to_ebsp());
 
 	output += nal_unit.get();
 	file.write((char *)&output.buffer[0], output.buffer.size());
@@ -247,21 +251,23 @@ Bitstream Writer::seq_parameter_set_rbsp(const int width, const int height, cons
 {
 	Bitstream sodb;
 	// only support baseline profile
-	std::uint8_t profile_idc = 66;																   // u(8)
-	bool constraint_set0_flag = false;															   // u(1)
-	bool constraint_set1_flag = false;															   // u(1)
-	bool constraint_set2_flag = false;															   // u(1)
-	std::uint8_t reserved_zero_5bits = 0x00;													   // u(5)
-	std::uint8_t level_idc = 10;																   // u(8)
+	std::uint8_t profile_idc = 66;	   // u(8)
+	bool constraint_set0_flag = false; // u(1)
+	bool constraint_set1_flag = false; // u(1)
+	bool constraint_set2_flag = false;
+	bool constraint_set3_flag = false;
+	bool constraint_set4_flag = false;															   // u(1)
+	std::uint8_t reserved_zero_2bits = 0x00;													   // u(5)
+	std::uint8_t level_idc = 22;																   // 码流,dbp等相关参数控制															   // u(8)
 	unsigned int seq_parameter_set_id = 0;														   // ue(v)
-	unsigned int log2_max_frame_num_minus4 = std::max(0, (int)log2(num_frames) - 4);			   // ue(v)
-	unsigned int pic_order_cnt_type = 0;														   // ue(v)
-	unsigned int log2_max_pic_order_cnt_lsb_minus4 = log2_max_frame_num_minus4;					   // ue(v)
-	unsigned int num_ref_frames = 0;															   // ue(v)
-	bool gaps_in_frame_num_value_allowed_flag = false;											   // u(1)
+	unsigned int log2_max_frame_num_minus4 = std::max(0, (int)log2(num_frames) - 4);			   // ue(v) GOP 最大帧数
+	unsigned int pic_order_cnt_type = 0;														   // ue(v) 如何计算播放顺序类型(0:低高位解码;1:frame_num+1)
+	unsigned int log2_max_pic_order_cnt_lsb_minus4 = log2_max_frame_num_minus4;					   // ue(v) pic上限
+	unsigned int num_ref_frames = 1;															   // 设置最大参考帧数目(最多设置为16,若为场编码则扩大两倍)															   // ue(v)
+	bool gaps_in_frame_num_value_allowed_flag = false;											   // u(1) 是否允许frame_num不连续
 	unsigned int pic_width_in_mbs_minus_1 = (width % 16 == 0) ? (width / 16) - 1 : width / 16;	   // ue(v)
 	unsigned int pic_height_in_mbs_minus_1 = (height % 16 == 0) ? (height / 16) - 1 : height / 16; // ue(v)
-	bool frame_mbs_only_flag = true;															   // u(1)
+	bool frame_mbs_only_flag = true;															   // u(1) 只能是帧不允许场
 	bool direct_8x8_inference_flag = false;														   // u(1)
 	bool frame_cropping_flag = (width % 16 != 0) || (height % 16 != 0);							   // u(1)
 
@@ -281,7 +287,9 @@ Bitstream Writer::seq_parameter_set_rbsp(const int width, const int height, cons
 	sodb += Bitstream(constraint_set0_flag);
 	sodb += Bitstream(constraint_set1_flag);
 	sodb += Bitstream(constraint_set2_flag);
-	sodb += Bitstream(reserved_zero_5bits, 5);
+	sodb += Bitstream(constraint_set3_flag);
+	sodb += Bitstream(constraint_set4_flag);
+	sodb += Bitstream(reserved_zero_2bits, 2);
 	sodb += Bitstream(level_idc, 8);
 	sodb += ue(seq_parameter_set_id);
 	sodb += ue(log2_max_frame_num_minus4);
@@ -320,13 +328,13 @@ Bitstream Writer::pic_parameter_set_rbsp()
 
 	unsigned int pic_parameter_set_id = 0;							// ue(v)
 	unsigned int seq_parameter_set_id = 0;							// ue(v)
-	bool entropy_coding_mode_flag = false;							// u(1)
+	bool entropy_coding_mode_flag = false;							// u(1) (0:CAVLC;1:CABAC)
 	bool pic_order_present_flag = false;							// u(1)
-	unsigned int num_slice_groups_minus1 = 0;						// ue(v)
-	unsigned int num_ref_idx_l0_active_minus1 = 0;					// ue(v)
+	unsigned int num_slice_groups_minus1 = 0;						// ue(v)图像条带组数
+	unsigned int num_ref_idx_l0_active_minus1 = 0;					// ue(v)参考图像列表最大索引号
 	unsigned int num_ref_idx_l1_active_minus1 = 0;					// ue(v)
-	bool weighted_pred_flag = false;								// u(1)
-	unsigned int weighted_bipred_idc = 0;							// u(2)
+	bool weighted_pred_flag = false;								// u(1)加权预测是否应用于P和SP
+	unsigned int weighted_bipred_idc = 0;							// u(2)B条带应采用的加权原则
 	int pic_init_qp_minus26 = LUMA_QP - 26;							// se(v)
 	int pic_init_qs_minus26 = 0;									// se(v)
 	int chroma_qp_index_offset = QPC2idoffset[CHROMA_QP] - LUMA_QP; // se(v)
@@ -356,16 +364,23 @@ Bitstream Writer::pic_parameter_set_rbsp()
 Bitstream Writer::slice_layer_without_partitioning_rbsp(const int _frame_num, Frame &frame)
 {
 	Bitstream sodb = slice_header(_frame_num);
+	frame.type = _frame_num == 0 ? I_PICTURE : P_PICTURE;
 	return write_slice_data(frame, sodb).rbsp_trailing_bits();
 }
 
 Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 {
+	static int bits = 0;
 	for (auto &mb : frame.mbs)
 	{
-		if (mb.is_I_PCM)
+		if (frame.type == P_PICTURE)
 		{
-			sodb += ue(25);
+			sodb += ue(0); // skip_run
+			sodb += ue(0); // P type P_L0_L0_16x16
+		}
+		else if (mb.is_I_PCM)
+		{
+			sodb += ue(25); // I_PCM type is 25
 
 			while (!sodb.byte_align())
 				sodb += Bitstream(false);
@@ -382,25 +397,26 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 			continue;
 		}
 
-		if (mb.is_intra16x16)
+		else if (mb.is_intra16x16)
 		{
 			unsigned int type = 1;
 			if (mb.coded_block_pattern_luma)
 				type += 12;
 
-			if (mb.coded_block_pattern_chroma_DC == false && mb.coded_block_pattern_chroma_AC == false)
+			if (mb.coded_block_pattern_chroma_DC == false && mb.coded_block_pattern_chroma_AC == false) // all All chroma transform coefficient levels are equal to 0.
 				type += 0;
-			else if (mb.coded_block_pattern_chroma_AC == false)
+			else if (mb.coded_block_pattern_chroma_AC == false) // All chroma AC transform coefficient levels are equal to 0. one and more DC non zero
 				type += 4;
-			else
+			else // 0 and more DC are not non-zero,one and more chroma AC transform coefficient levels are non zero.
 				type += 8;
 
 			type += static_cast<unsigned int>(mb.intra16x16_Y_mode);
 			sodb += ue(type);
 		}
-		else
+
+		else // Intra 4x4 mode
 		{
-			sodb += ue(0);
+			sodb += ue(0); // mb_type
 		}
 
 		sodb += mb_pred(mb, frame);
@@ -419,13 +435,18 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 				if (mb.coded_block_pattern_luma_4x4[i])
 					cbp += (1 << i);
 
-			sodb += ue(me[cbp]);
+			sodb += ue(frame.type == I_PICTURE ? intra_me[cbp] : inter_me[cbp]);
 		}
 
 		if (mb.coded_block_pattern_luma || mb.coded_block_pattern_chroma_DC || mb.coded_block_pattern_chroma_AC || mb.is_intra16x16)
 		{
-			sodb += se(0);
+			sodb += se(0); // mb_qp_delta
 			sodb += mb.bitstream;
+		}
+		if (frame.type == P_PICTURE)
+		{
+			std::cout << mb.mb_index << " output " << sodb.nb_bits - bits << "bits" << std::endl;
+			bits = sodb.nb_bits;
 		}
 	}
 
@@ -435,64 +456,71 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 Bitstream Writer::mb_pred(MacroBlock &mb, Frame &frame)
 {
 	Bitstream sodb;
-
-	if (!mb.is_intra16x16)
+	if (frame.type == P_PICTURE)
 	{
-		for (int cur_pos = 0; cur_pos != 16; cur_pos++)
+		sodb += se(mb.mv.first - mb.mvp.first);
+		sodb += se(mb.mv.first - mb.mvp.second);
+	}
+	else if (frame.type == I_PICTURE)
+	{
+		if (!mb.is_intra16x16)
 		{
-			int real_pos = MacroBlock::convert_table[cur_pos];
+			for (int cur_pos = 0; cur_pos != 16; cur_pos++)
+			{
+				int real_pos = MacroBlock::convert_table[cur_pos];
 
-			int pmA_index, pmA_pos;
-			if (real_pos % 4 == 0)
-			{
-				pmA_index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_L);
-				pmA_pos = real_pos + 3;
-			}
-			else
-			{
-				pmA_index = mb.mb_index;
-				pmA_pos = real_pos - 1;
-			}
-			pmA_pos = MacroBlock::convert_table[pmA_pos];
-
-			int pmB_index, pmB_pos;
-			if (0 <= real_pos && real_pos <= 3)
-			{
-				pmB_index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_U);
-				pmB_pos = 12 + real_pos;
-			}
-			else
-			{
-				pmB_index = mb.mb_index;
-				pmB_pos = real_pos - 4;
-			}
-			pmB_pos = MacroBlock::convert_table[pmB_pos];
-
-			int pred_modeA = 2, pred_modeB = 2;
-			if (pmA_index != -1 && (!frame.mbs.at(pmA_index).is_intra16x16) && (!frame.mbs.at(pmA_index).is_I_PCM) && pmB_index != -1 && (!frame.mbs.at(pmB_index).is_intra16x16) && (!frame.mbs.at(pmB_index).is_I_PCM))
-			{
-				pred_modeA = static_cast<int>(frame.mbs.at(pmA_index).intra4x4_Y_mode.at(pmA_pos));
-				pred_modeB = static_cast<int>(frame.mbs.at(pmB_index).intra4x4_Y_mode.at(pmB_pos));
-			}
-
-			int pred_mode = std::min(pred_modeA, pred_modeB);
-			int cur_mode = static_cast<int>(mb.intra4x4_Y_mode.at(cur_pos));
-			if (pred_mode == cur_mode)
-			{
-				sodb += Bitstream(true);
-			}
-			else
-			{
-				sodb += Bitstream(false);
-				if (cur_mode < pred_mode)
-					sodb += Bitstream(static_cast<std::uint8_t>(cur_mode), 3);
+				int pmA_index, pmA_pos;
+				if (real_pos % 4 == 0)
+				{
+					pmA_index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_L);
+					pmA_pos = real_pos + 3;
+				}
 				else
-					sodb += Bitstream(static_cast<std::uint8_t>(cur_mode - 1), 3);
+				{
+					pmA_index = mb.mb_index;
+					pmA_pos = real_pos - 1;
+				}
+				pmA_pos = MacroBlock::convert_table[pmA_pos];
+
+				int pmB_index, pmB_pos;
+				if (0 <= real_pos && real_pos <= 3)
+				{
+					pmB_index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_U);
+					pmB_pos = 12 + real_pos;
+				}
+				else
+				{
+					pmB_index = mb.mb_index;
+					pmB_pos = real_pos - 4;
+				}
+				pmB_pos = MacroBlock::convert_table[pmB_pos];
+
+				int pred_modeA = 2, pred_modeB = 2;
+				if (pmA_index != -1 && (!frame.mbs.at(pmA_index).is_intra16x16) && (!frame.mbs.at(pmA_index).is_I_PCM) && pmB_index != -1 && (!frame.mbs.at(pmB_index).is_intra16x16) && (!frame.mbs.at(pmB_index).is_I_PCM))
+				{
+					pred_modeA = static_cast<int>(frame.mbs.at(pmA_index).intra4x4_Y_mode.at(pmA_pos));
+					pred_modeB = static_cast<int>(frame.mbs.at(pmB_index).intra4x4_Y_mode.at(pmB_pos));
+				}
+
+				int pred_mode = std::min(pred_modeA, pred_modeB);
+				int cur_mode = static_cast<int>(mb.intra4x4_Y_mode.at(cur_pos));
+				if (pred_mode == cur_mode)
+				{
+					sodb += Bitstream(true);
+				}
+				else
+				{
+					sodb += Bitstream(false);
+					if (cur_mode < pred_mode)
+						sodb += Bitstream(static_cast<std::uint8_t>(cur_mode), 3);
+					else
+						sodb += Bitstream(static_cast<std::uint8_t>(cur_mode - 1), 3);
+				}
 			}
 		}
-	}
 
-	sodb += ue(static_cast<unsigned int>(mb.intra_Cr_Cb_mode));
+		sodb += ue(static_cast<unsigned int>(mb.intra_Cr_Cb_mode));
+	}
 
 	return sodb;
 }
@@ -501,25 +529,35 @@ Bitstream Writer::slice_header(const int _frame_num)
 {
 	Bitstream sodb;
 
-	unsigned int first_mb_in_slice = 0;				// ue(v)
-	unsigned int slice_type = 2;					// ue(v)
-	unsigned int pic_parameter_set_id = 0;			// ue(v)
-	unsigned int frame_num = 0;						// u(v)
-	unsigned int idr_pic_id = _frame_num;			// ue(v)
-	unsigned int pic_order_cnt_lsb = _frame_num;	// u(v)
-	bool no_output_of_prior_pics_flag = true;		// u(1)
-	bool long_term_reference_flag = false;			// u(1)
-	int slice_qp_delta = 0;							// se(v)
-	unsigned int disable_deblocking_filter_idc = 1; // ue(v)
+	unsigned int first_mb_in_slice = 0;								   // ue(v)
+	unsigned int slice_type = _frame_num == 0 ? I_PICTURE : P_PICTURE; // ue(v) 第一帧为I帧
+	unsigned int pic_parameter_set_id = 0;							   // ue(v)
+	unsigned int frame_num = _frame_num;							   // u(v) 指明参考帧顺序
+	unsigned int idr_pic_id = _frame_num;							   // ue(v)
+	unsigned int pic_order_cnt_lsb = _frame_num;					   // u(v)
+	bool no_output_of_prior_pics_flag = true;						   // u(1)
+	bool long_term_reference_flag = false;							   // u(1)
+	int slice_qp_delta = 0;											   // se(v)
+	unsigned int disable_deblocking_filter_idc = 1;					   // ue(v)
 
 	sodb += ue(first_mb_in_slice);
 	sodb += ue(slice_type);
 	sodb += ue(pic_parameter_set_id);
 	sodb += Bitstream(frame_num, log2_max_frame_num);
-	sodb += ue(idr_pic_id);
+	if (_frame_num == 0)
+		sodb += ue(idr_pic_id);
 	sodb += Bitstream(pic_order_cnt_lsb, log2_max_pic_order_cnt_lsb);
-	sodb += Bitstream(no_output_of_prior_pics_flag);
-	sodb += Bitstream(long_term_reference_flag);
+	if (_frame_num != 0)
+	{
+		sodb += Bitstream(false);
+		sodb += Bitstream(false);
+		sodb += Bitstream(false);
+	}
+	else
+	{
+		sodb += Bitstream(no_output_of_prior_pics_flag);
+		sodb += Bitstream(long_term_reference_flag);
+	}
 	sodb += se(slice_qp_delta);
 	sodb += ue(disable_deblocking_filter_idc);
 

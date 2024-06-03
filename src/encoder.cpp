@@ -25,10 +25,17 @@ void encode_sequence(Reader &reader, Writer &writer, Util &util)
     while (curr_frame < frame_num)
     {
         Frame frame = reader.get_one_frame();
-
         logger.log(Level::NORMAL, "encode frame #" + std::to_string(curr_frame));
-
-        encode_I_frame(frame);
+        if (curr_frame == 0)
+        {
+            frame.type = I_PICTURE;
+            encode_I_frame(frame);
+        }
+        else
+        {
+            frame.type = P_PICTURE;
+            encode_P_frame(frame);
+        }
         vlc_frame(frame);
         writer.write_slice(curr_frame, frame);
 

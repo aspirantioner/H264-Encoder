@@ -1,12 +1,315 @@
 #include "frame_encode.h"
+#include <algorithm>
 #define SUPPORT_INTRA4x4 false
-
+#define SEARCH_STEP_LEN 1
 Log f_logger("Frame encode");
+std::vector<Frame> ref_frame_list(1);
+void get_match_Y_block(Frame &ref_frame, int x, int y, Block16x16 &luam_pred, Block8x8 &cr_pred, Block8x8 &cb_pred)
+{
+}
+void get_mv(MacroBlock &mb, Frame &ref_frame)
+{
+	int min_y_sad = (1 << 16), min_cr_cb_sad = (1 << 14);
+	auto &mv = mb.mv;
+	Block16x16 luma_res;
+	Block8x8 cr_res;
+	Block8x8 cb_res;
+	int y_error, cr_cb_error;
+	int diff = 0;
 
+	Block16x16 luma_pred;
+	Block8x8 cr_pred;
+	Block8x8 cb_pred;
+	auto y_mb_xy = ref_frame.transform_mbxy_into_framexy<Y_BLOCK>(mb);
+	auto crcb_mb_xy = ref_frame.transform_mbxy_into_framexy<Cr_BLOCK>(mb);
+
+	ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, luma_pred);
+	ref_frame.get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, cb_pred);
+	ref_frame.get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, cr_pred);
+	for (int i = 0; i < 256; i++)
+	{
+		diff = mb.Y[i] - luma_pred[i];
+		luma_pred[i] = diff;
+		y_error += abs(luma_pred[i]);
+	}
+	for (int i = 0; i < 64; i++)
+	{
+		diff = mb.Cr[i] - cr_pred[i];
+		cr_pred[i] = diff;
+		diff = mb.Cb[i] - cb_pred[i];
+		cb_pred[i] = diff;
+		cr_cb_error += abs(cr_pred[i]) + abs(cb_pred[i]);
+	}
+	if (y_error < min_y_sad)
+	{
+		min_y_sad = y_error;
+		std::copy(luma_pred.begin(), luma_pred.end(), luma_res.begin());
+		std::copy(cb_pred.begin(), cb_pred.end(), cb_res.begin());
+		std::copy(cr_pred.begin(), cr_pred.end(), cr_res.begin());
+		mv = std::pair<int, int>(0, 0);
+	}
+	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
+	{
+		y_mb_xy.second--;
+		crcb_mb_xy.second--;
+		if (!ref_frame.is_valid_xy<Y_BLOCK>(y_mb_xy.first, y_mb_xy.second) || !ref_frame.is_valid_xy<Cr_BLOCK>(crcb_mb_xy.first, crcb_mb_xy.second))
+		{
+			break;
+		}
+		ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, luma_pred);
+		ref_frame.get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, cb_pred);
+		ref_frame.get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, cr_pred);
+		for (int i = 0; i < 256; i++)
+		{
+			diff = mb.Y[i] - luma_pred[i];
+			luma_pred[i] = diff;
+			y_error += abs(luma_pred[i]);
+		}
+		for (int i = 0; i < 64; i++)
+		{
+			diff = mb.Cr[i] - cr_pred[i];
+			cr_pred[i] = diff;
+			diff = mb.Cb[i] - cb_pred[i];
+			cb_pred[i] = diff;
+			cr_cb_error += abs(cr_pred[i]) + abs(cb_pred[i]);
+		}
+		if (y_error < min_y_sad)
+		{
+			min_y_sad = y_error;
+			std::copy(luma_pred.begin(), luma_pred.end(), luma_res.begin());
+			std::copy(cb_pred.begin(), cb_pred.end(), cb_res.begin());
+			std::copy(cr_pred.begin(), cr_pred.end(), cr_res.begin());
+			mv = std::pair<int, int>(0, i * -1);
+		}
+	}
+	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
+	{
+		y_mb_xy.second++;
+		crcb_mb_xy.second++;
+		if (!ref_frame.is_valid_xy<Y_BLOCK>(y_mb_xy.first, y_mb_xy.second) || !ref_frame.is_valid_xy<Cr_BLOCK>(crcb_mb_xy.first, crcb_mb_xy.second))
+		{
+			break;
+		}
+		ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, luma_pred);
+		ref_frame.get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, cb_pred);
+		ref_frame.get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, cr_pred);
+		for (int i = 0; i < 256; i++)
+		{
+			diff = mb.Y[i] - luma_pred[i];
+			luma_pred[i] = diff;
+			y_error += abs(luma_pred[i]);
+		}
+		for (int i = 0; i < 64; i++)
+		{
+			diff = mb.Cr[i] - cr_pred[i];
+			cr_pred[i] = diff;
+			diff = mb.Cb[i] - cb_pred[i];
+			cb_pred[i] = diff;
+			cr_cb_error += abs(cr_pred[i]) + abs(cb_pred[i]);
+		}
+		if (y_error < min_y_sad)
+		{
+			min_y_sad = y_error;
+			std::copy(luma_pred.begin(), luma_pred.end(), luma_res.begin());
+			std::copy(cb_pred.begin(), cb_pred.end(), cb_res.begin());
+			std::copy(cr_pred.begin(), cr_pred.end(), cr_res.begin());
+			mv = std::pair<int, int>(0, i);
+		}
+	}
+	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
+	{
+		y_mb_xy.first--;
+		crcb_mb_xy.first--;
+		if (!ref_frame.is_valid_xy<Y_BLOCK>(y_mb_xy.first, y_mb_xy.second) || !ref_frame.is_valid_xy<Cr_BLOCK>(crcb_mb_xy.first, crcb_mb_xy.second))
+		{
+			break;
+		}
+		ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, luma_pred);
+		ref_frame.get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, cb_pred);
+		ref_frame.get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, cr_pred);
+		for (int i = 0; i < 256; i++)
+		{
+			diff = mb.Y[i] - luma_pred[i];
+			luma_pred[i] = diff;
+			y_error += abs(luma_pred[i]);
+		}
+		for (int i = 0; i < 64; i++)
+		{
+			diff = mb.Cr[i] - cr_pred[i];
+			cr_pred[i] = diff;
+			diff = mb.Cb[i] - cb_pred[i];
+			cb_pred[i] = diff;
+			cr_cb_error += abs(cr_pred[i]) + abs(cb_pred[i]);
+		}
+		if (y_error < min_y_sad)
+		{
+			min_y_sad = y_error;
+			std::copy(luma_pred.begin(), luma_pred.end(), luma_res.begin());
+			std::copy(cb_pred.begin(), cb_pred.end(), cb_res.begin());
+			std::copy(cr_pred.begin(), cr_pred.end(), cr_res.begin());
+			mv = std::pair<int, int>(-1 * i, 0);
+		}
+	}
+	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
+	{
+		y_mb_xy.first++;
+		crcb_mb_xy.first++;
+		if (!ref_frame.is_valid_xy<Y_BLOCK>(y_mb_xy.first, y_mb_xy.second) || !ref_frame.is_valid_xy<Cr_BLOCK>(crcb_mb_xy.first, crcb_mb_xy.second))
+		{
+			break;
+		}
+		ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, luma_pred);
+		ref_frame.get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, cb_pred);
+		ref_frame.get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, cr_pred);
+		for (int i = 0; i < 256; i++)
+		{
+			diff = mb.Y[i] - luma_pred[i];
+			luma_pred[i] = diff;
+			y_error += abs(luma_pred[i]);
+		}
+		for (int i = 0; i < 64; i++)
+		{
+			diff = mb.Cr[i] - cr_pred[i];
+			cr_pred[i] = diff;
+			diff = mb.Cb[i] - cb_pred[i];
+			cb_pred[i] = diff;
+			cr_cb_error += abs(cr_pred[i]) + abs(cb_pred[i]);
+		}
+		if (y_error < min_y_sad)
+		{
+			min_y_sad = y_error;
+			std::copy(luma_pred.begin(), luma_pred.end(), luma_res.begin());
+			std::copy(cb_pred.begin(), cb_pred.end(), cb_res.begin());
+			std::copy(cr_pred.begin(), cr_pred.end(), cr_res.begin());
+			mv = std::pair<int, int>(i, 0);
+		}
+	}
+	mb.Y = luma_res;
+	mb.Cb = cb_res;
+	mb.Cr = cr_res;
+}
+
+void get_mvp(MacroBlock &mb, Frame &frame)
+{
+
+	std::vector<std::pair<int, int>> mv_vec(3, std::pair<int, int>(0, 0));
+	if (mb.mb_row > 0)
+	{
+		mv_vec[0] = frame.mbs[(mb.mb_row - 1) * frame.nb_mb_rows + mb.mb_col].mv;
+	}
+	if (mb.mb_col > 0)
+	{
+		mv_vec[1] = frame.mbs[mb.mb_row * frame.nb_mb_rows + mb.mb_col - 1].mv;
+	}
+	if (mb.mb_row > 0 && mb.mb_col < frame.nb_mb_cols - 1)
+	{
+		mv_vec[2] = frame.mbs[(mb.mb_row - 1) * frame.nb_mb_rows + mb.mb_col + 1].mv;
+	}
+	else if (mb.mb_row > 0 && mb.mb_col > 0)
+	{
+		mv_vec[2] = frame.mbs[(mb.mb_row - 1) * frame.nb_mb_rows + mb.mb_col - 1].mv;
+	}
+	auto get_mv_v = [](std::pair<int, int> &mv) -> unsigned int
+	{ return mv.first * mv.first + mv.second * mv.second; };
+
+	auto mv_comp = [&](std::pair<int, int> &mv1, std::pair<int, int> &mv2) -> bool
+	{ return get_mv_v(mv1) < get_mv_v(mv2); };
+	std::sort(mv_vec.begin(), mv_vec.end(), mv_comp);
+	if (mv_vec[2] == std::pair<int, int>(0, 0))
+	{
+		mb.mvp = mb.mv;
+	}
+	else if (mv_vec[1] == std::pair<int, int>(0, 0))
+	{
+		mb.mvp = mv_vec[2];
+	}
+	else if (mv_vec[0] == std::pair<int, int>(0, 0))
+	{
+		mb.mvp = mv_vec[1];
+	}
+	else
+	{
+		mb.mvp = mv_vec[0];
+	}
+}
+
+void encode_P_frame(Frame &frame)
+{
+	// std::vector<MacroBlock> decoded_blocks;
+	// decoded_blocks.reserve(frame.mbs.size());
+	for (auto &mb : frame.mbs)
+	{
+		// std::cout << "start p code (" << mb.mb_row << "," << mb.mb_col << ")" << std::endl;
+		std::cout << "the " << mb.mb_index << " mb block" << std::endl;
+		std::cout << "before P pred " << std::endl;
+		for (int i = 0; i < 256; i++)
+		{
+			std::cout << mb.Y[i] << " ";
+			if (i % 16 == 15)
+			{
+				std::cout << std::endl;
+			}
+		}
+		get_mv(mb, ref_frame_list[0]);
+		// std::cout << "after P pred " <<"("<<mb.mv.first<<","<<mb.mv.second<<")"<< std::endl;
+		// for (int i = 0; i < 256; i++)
+		//{
+		//	std::cout << mb.Y[i] << " ";
+		//	if (i % 16 == 15)
+		//	{
+		//		std::cout << std::endl;
+		//	}
+		// }
+		get_mvp(mb, frame);
+		// std::cout << "the " << mb.mb_index << " mv is" << "(" << mb.mv.first << "," << mb.mv.second << ")" << std::endl;
+
+		std::cout << "before qdct" << std::endl;
+		for (int i = 0; i < 256; i++)
+		{
+			std::cout << mb.Y[i] << " ";
+			if (i % 16 == 15)
+			{
+				std::cout << std::endl;
+			}
+		}
+		// QDCT
+		for (int cur_pos = 0; cur_pos < 16; cur_pos++)
+		{
+			qdct_luma4x4_intra(mb.get_Y_4x4_block(cur_pos));
+		}
+
+		// qdct_luma16x16_intra(mb.Y);
+		std::cout << "after qdct" << std::endl;
+		for (int i = 0; i < 256; i++)
+		{
+			std::cout << mb.Y[i] << " ";
+			if (i % 16 == 15)
+			{
+				std::cout << std::endl;
+			}
+		}
+		qdct_chroma8x8_intra(mb.Cb);
+		qdct_chroma8x8_intra(mb.Cr);
+		// decoded_blocks[mb.mb_index] = mb;
+		//  inv_qdct_luma16x16_intra(decoded_blocks[mb.mb_index].Y);
+		//  inv_qdct_chroma8x8_intra(decoded_blocks[mb.mb_index].Cb);
+		//  inv_qdct_chroma8x8_intra(decoded_blocks[mb.mb_index].Cr);
+		//  Block16x16 y_block;
+		//  Block8x8 cb_block;
+		//  Block8x8 cr_block;
+		//  ref_frame_list[0].get_block_from_framexy<Y_BLOCK>(mb.mv, y_block);
+		//  ref_frame_list[0].get_block_from_framexy<Cb_BLOCK>(mb.mv, cb_block);
+		//  ref_frame_list[0].get_block_from_framexy<Cr_BLOCK>(mb.mv, cr_block);
+		//  std::transform(decoded_blocks[mb.mb_index].Y.begin(), decoded_blocks[mb.mb_index].Y.end(), y_block.begin(), decoded_blocks[mb.mb_index].Y.begin(), std::plus<int>());
+		//  std::transform(decoded_blocks[mb.mb_index].Cb.begin(), decoded_blocks[mb.mb_index].Cb.end(), cb_block.begin(), decoded_blocks[mb.mb_index].Cb.begin(), std::plus<int>());
+		//  std::transform(decoded_blocks[mb.mb_index].Cr.begin(), decoded_blocks[mb.mb_index].Cr.end(), cr_block.begin(), decoded_blocks[mb.mb_index].Cr.begin(), std::plus<int>());
+		//  mb.is_intra16x16 = true;
+	}
+}
 void encode_I_frame(Frame &frame)
 {
 	// decoded Y blocks for intra prediction
-	std::vector<MacroBlock> decoded_blocks;
+	std::vector<MacroBlock> &decoded_blocks = ref_frame_list[0].mbs;
 	decoded_blocks.reserve(frame.mbs.size());
 
 	int mb_no = 0;
@@ -30,6 +333,7 @@ void encode_I_frame(Frame &frame)
 
 	// in-loop deblocking filter
 	deblocking_filter(decoded_blocks, frame);
+	ref_frame_list[0] = frame;
 }
 
 int encode_Y_block(MacroBlock &mb, std::vector<MacroBlock> &decoded_blocks, Frame &frame)
@@ -59,13 +363,13 @@ int encode_Y_block(MacroBlock &mb, std::vector<MacroBlock> &decoded_blocks, Fram
 		for (auto &m : mb.intra4x4_Y_mode)
 			mode += " " + std::to_string(static_cast<int>(m));
 		f_logger.log(Level::DEBUG, "luma intra4x4\terror: " + std::to_string(error_intra4x4) + mode);
-
+		mb.is_intra16x16 = false;
 		return error_intra4x4;
 	}
 	else
 	{
 		f_logger.log(Level::DEBUG, "luma intra16x16\terror: " + std::to_string(error_intra16x16) + "\tmode: " + std::to_string(static_cast<int>(mb.intra16x16_Y_mode)));
-
+		mb.is_intra16x16 = true;
 		return error_intra16x16;
 	}
 }
@@ -88,7 +392,6 @@ int encode_Y_intra16x16_block(MacroBlock &mb, std::vector<MacroBlock> &decoded_b
 									   get_decoded_Y_block(MB_NEIGHBOR_U),
 									   get_decoded_Y_block(MB_NEIGHBOR_L));
 
-	mb.is_intra16x16 = true;
 	mb.intra16x16_Y_mode = mode;
 
 	// QDCT
@@ -225,7 +528,6 @@ int encode_Y_intra4x4_block(int cur_pos, MacroBlock &mb, MacroBlock &decoded_blo
 									 get_UR_4x4_block(),
 									 get_L_4x4_block());
 
-	mb.is_intra16x16 = false;
 	mb.intra4x4_Y_mode.at(cur_pos) = mode;
 
 	// QDCT
