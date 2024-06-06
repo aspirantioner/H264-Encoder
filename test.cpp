@@ -34,11 +34,18 @@ struct TypeBlockSelector<Cr_BLOCK>
 
 int main(int argc, char *argv[])
 {
-    int a = 0;
-    std::vector<int> vec{1, 2, 3};
-    std::array<int, 3> arr;
-    arr[0] = 0;
-    std::copy(arr.begin(), arr.begin() + 3, vec.begin());
-    std::cout << arr[0] << arr[1] << arr[2] << std::endl;
+    // int a = 0;
+    // std::vector<int> vec{1, 2, 3};
+    // std::array<int, 3> arr;
+    // arr[0] = 0;
+    // std::copy(arr.begin(), arr.begin() + 3, vec.begin());
+    // std::cout << arr[0] << arr[1] << arr[2] << std::endl;
+    std::vector<int> vec1{1, 2};
+    std::vector<int> vec2{3, 4};
+    vec1 = vec2;
+    for (int i = 0; i < vec1.size(); i++)
+    {
+        std::cout << vec1[i] << std::endl;
+    }
     return 0;
 }

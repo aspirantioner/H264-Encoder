@@ -21,6 +21,7 @@ public:
   Block8x8 Cb;
   std::pair<int, int> mv;
   std::pair<int, int> mvp;
+  bool is_p_skip = false;
   bool is_intra16x16 = false;
   Intra16x16Mode intra16x16_Y_mode;
   std::array<Intra4x4Mode, 16> intra4x4_Y_mode;
@@ -38,7 +39,14 @@ public:
   static const std::array<int, 16> convert_table;
 
   MacroBlock(const int r, const int c) : mb_row(r), mb_col(c) {}
-
+  void operator=(const MacroBlock& mb){
+    mb_index = mb.mb_index;
+    mb_col = mb.mb_col;
+    mb_row = mb.mb_row;
+    Y = mb.Y;
+    Cb = mb.Cb;
+    Cr = mb.Cr;
+  }
   Block4x4 get_Y_4x4_block(int pos);
   Block4x4 get_Cr_4x4_block(int pos);
   Block4x4 get_Cb_4x4_block(int pos);

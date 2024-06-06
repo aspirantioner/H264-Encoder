@@ -256,7 +256,8 @@ Bitstream Writer::seq_parameter_set_rbsp(const int width, const int height, cons
 	bool constraint_set1_flag = false; // u(1)
 	bool constraint_set2_flag = false;
 	bool constraint_set3_flag = false;
-	bool constraint_set4_flag = false;															   // u(1)
+	bool constraint_set4_flag = false;
+	bool constraint_set5_flag = false;															   // u(1)
 	std::uint8_t reserved_zero_2bits = 0x00;													   // u(5)
 	std::uint8_t level_idc = 22;																   // 码流,dbp等相关参数控制															   // u(8)
 	unsigned int seq_parameter_set_id = 0;														   // ue(v)
@@ -289,6 +290,7 @@ Bitstream Writer::seq_parameter_set_rbsp(const int width, const int height, cons
 	sodb += Bitstream(constraint_set2_flag);
 	sodb += Bitstream(constraint_set3_flag);
 	sodb += Bitstream(constraint_set4_flag);
+	sodb += Bitstream(constraint_set5_flag);
 	sodb += Bitstream(reserved_zero_2bits, 2);
 	sodb += Bitstream(level_idc, 8);
 	sodb += ue(seq_parameter_set_id);
@@ -459,7 +461,7 @@ Bitstream Writer::mb_pred(MacroBlock &mb, Frame &frame)
 	if (frame.type == P_PICTURE)
 	{
 		sodb += se(mb.mv.first - mb.mvp.first);
-		sodb += se(mb.mv.first - mb.mvp.second);
+		sodb += se(mb.mv.second - mb.mvp.second);
 	}
 	else if (frame.type == I_PICTURE)
 	{
