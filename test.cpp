@@ -12,25 +12,34 @@ enum BLOCKTYPE
 };
 
 template <BLOCKTYPE TYPE>
-struct TypeBlockSelector;
-
-template <>
-struct TypeBlockSelector<Y_BLOCK>
+struct TypeBlockSelector
 {
-    using type = Block16x16;
+    #if TYPE == Y_BLOCK
+        using type = Block16x16;
+    #elif TYPE == Cb_BLOCK
+        using type = Block8x8;
+    #else
+        using type = Block8x8;
+    #endif
 };
 
-template <>
-struct TypeBlockSelector<Cb_BLOCK>
-{
-    using type = Block8x8;
-};
+// template <>
+// struct TypeBlockSelector<Y_BLOCK>
+//{
+//     using type = Block16x16;
+// };
 
-template <>
-struct TypeBlockSelector<Cr_BLOCK>
-{
-    using type = Block8x8;
-};
+// template <>
+// struct TypeBlockSelector<Cb_BLOCK>
+//{
+//     using type = Block8x8;
+// };
+
+// template <>
+// struct TypeBlockSelector<Cr_BLOCK>
+//{
+//     using type = Block8x8;
+// };
 
 int main(int argc, char *argv[])
 {
@@ -40,12 +49,14 @@ int main(int argc, char *argv[])
     // arr[0] = 0;
     // std::copy(arr.begin(), arr.begin() + 3, vec.begin());
     // std::cout << arr[0] << arr[1] << arr[2] << std::endl;
-    std::vector<int> vec1{1, 2};
-    std::vector<int> vec2{3, 4};
-    vec1 = vec2;
-    for (int i = 0; i < vec1.size(); i++)
-    {
-        std::cout << vec1[i] << std::endl;
-    }
+    // std::vector<int> vec1{1, 2};
+    // std::vector<int> vec2{3, 4};
+    // vec1 = vec2;
+    // for (int i = 0; i < vec1.size(); i++)
+    //{
+    //    std::cout << vec1[i] << std::endl;
+    //}
+    typename TypeBlockSelector<Cb_BLOCK>::type b;
+    std::cout << b.size() << std::endl;
     return 0;
 }

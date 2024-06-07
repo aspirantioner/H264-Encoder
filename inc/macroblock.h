@@ -21,8 +21,11 @@ public:
   Block8x8 Cb;
   std::pair<int, int> mv;
   std::pair<int, int> mvp;
+  std::pair<int, int> mvd;
   bool is_p_skip = false;
   bool is_intra16x16 = false;
+  bool is_intra4x4 = false;
+  bool is_inter = false;
   Intra16x16Mode intra16x16_Y_mode;
   std::array<Intra4x4Mode, 16> intra4x4_Y_mode;
   IntraChromaMode intra_Cr_Cb_mode;

@@ -29,6 +29,14 @@ enum BLOCKTYPE
 	Cr_BLOCK,
 	Cb_BLOCK,
 };
+enum P_BLOCK_TYPE
+{
+	P_L0_16X16,
+	P_L0_L0_16X8,
+	P_L0_L0_8X16,
+	P_L0_L0_8X8,
+	P_L0_L0_REF0,
+};
 
 template <BLOCKTYPE TYPE>
 struct TypeBlockSelector;
@@ -91,7 +99,7 @@ public:
 	std::vector<int> Cb;
 	std::vector<MacroBlock> mbs;
 	Frame(){};
-	Frame(const PadFrame &);
+	//Frame(const PadFrame &);
 	void operator=(const Frame &frame)
 	{
 		height = frame.height;

@@ -5,13 +5,10 @@
 Log f_logger("Frame encode");
 std::vector<Frame> ref_frame_list(1);
 
-void get_mv(MacroBlock &mb, Frame &ref_frame, std::vector<MacroBlock> &decoded_blocks)
+int get_mv(MacroBlock &mb, Frame &ref_frame, Block16x16 &luma_res, Block8x8 &cb_res, Block8x8 &cr_res)
 {
 	int min_y_sad = INT32_MAX >> 1, min_cr_cb_sad = INT32_MAX >> 1;
 	auto &mv = mb.mv;
-	Block16x16 luma_res;
-	Block8x8 cr_res;
-	Block8x8 cb_res;
 	int y_error = 0, cr_cb_error = 0;
 	int diff = 0;
 
@@ -198,35 +195,36 @@ void get_mv(MacroBlock &mb, Frame &ref_frame, std::vector<MacroBlock> &decoded_b
 		cr_cb_error = 0;
 	}
 	std::cout << "y sad is " << min_y_sad << " cb_cr sad is " << min_cr_cb_sad << std::endl;
-	mb.Y = luma_res;
-	mb.Cb = cb_res;
-	mb.Cr = cr_res;
+	// mb.Y = luma_res;
+	// mb.Cb = cb_res;
+	// mb.Cr = cr_res;
+	return min_y_sad + min_cr_cb_sad;
 }
 
 void get_mvp(MacroBlock &mb, Frame &frame)
 {
 	std::vector<int> mv_x;
 	std::vector<int> mv_y;
-	if (mb.mb_col > 0)
+	if (mb.mb_col > 0 && frame.mbs[mb.mb_row * frame.nb_mb_cols + mb.mb_col - 1].is_inter)
 	{
 		mv_x.push_back(frame.mbs[mb.mb_row * frame.nb_mb_cols + mb.mb_col - 1].mv.first);
 		mv_y.push_back(frame.mbs[mb.mb_row * frame.nb_mb_cols + mb.mb_col - 1].mv.second);
 	}
-	if (mb.mb_row > 0)
+	if (mb.mb_row > 0 && frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col].is_inter)
 	{
 		mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col].mv.first);
 		mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col].mv.second);
 	}
-	if (mb.mb_row > 0 && mb.mb_col < frame.nb_mb_cols - 1)
+	if (mb.mb_row > 0 && mb.mb_col < frame.nb_mb_cols - 1 && frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].is_inter)
 	{
 		mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].mv.first);
 		mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].mv.second);
 	}
-	else if (mb.mb_row > 0 && mb.mb_col > 0)
-	{
-		mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.first);
-		mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.second);
-	}
+	// else if (mb.mb_row > 0 && mb.mb_col > 0 && frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].is_inter)
+	//{
+	//	mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.first);
+	//	mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.second);
+	// }
 
 	if (mv_x.size() == 0)
 	{
@@ -267,8 +265,11 @@ void get_mvp(MacroBlock &mb, Frame &frame)
 
 void encode_P_frame(Frame &frame)
 {
-	// std::vector<MacroBlock> decoded_blocks;
-	// decoded_blocks.reserve(frame.mbs.size());
+	std::vector<MacroBlock> decoded_blocks;
+	decoded_blocks.reserve(frame.mbs.size());
+	Block16x16 luma_res;
+	Block8x8 cb_res;
+	Block8x8 cr_res;
 	for (auto &mb : frame.mbs)
 	{
 		// std::cout << "start p code (" << mb.mb_row << "," << mb.mb_col << ")" << std::endl;
@@ -283,7 +284,7 @@ void encode_P_frame(Frame &frame)
 		//		std::cout << std::endl;
 		//	}
 		// }
-		get_mv(mb, ref_frame_list[0]);
+		auto inter_error = get_mv(mb, ref_frame_list[0], luma_res, cb_res, cr_res);
 		std::cout << "mv is " << "(" << mb.mv.first << "," << mb.mv.second << ")" << std::endl;
 		// std::cout << "after P pred " <<"("<<mb.mv.first<<","<<mb.mv.second<<")"<< std::endl;
 		// for (int i = 0; i < 256; i++)
@@ -294,10 +295,87 @@ void encode_P_frame(Frame &frame)
 		//		std::cout << std::endl;
 		//	}
 		// }
-		get_mvp(mb, frame);
-		std::cout << "mvp is " << "(" << mb.mvp.first << "," << mb.mvp.second << ")" << std::endl;
-		// std::cout << "the " << mb.mb_index << " mv is" << "(" << mb.mv.first << "," << mb.mv.second << ")" << std::endl;
-		std::cout << "mvd is " << "(" << mb.mv.first - mb.mvp.first << "," << mb.mv.second - mb.mvp.second << ")" << std::endl;
+
+		if (inter_error <= 1000)
+		{
+			mb.is_inter = true;
+			mb.Y = luma_res;
+			mb.Cb = cb_res;
+			mb.Cr = cr_res;
+			get_mvp(mb, frame);
+			std::cout << "mvp is " << "(" << mb.mvp.first << "," << mb.mvp.second << ")" << std::endl;
+			// std::cout << "the " << mb.mb_index << " mv is" << "(" << mb.mv.first << "," << mb.mv.second << ")" << std::endl;
+			mb.mvd.first = mb.mv.first - mb.mvp.first;
+			mb.mvd.second = mb.mv.second - mb.mvp.second;
+			std::cout << "mvd is " << "(" << mb.mv.first - mb.mvp.first << "," << mb.mv.second - mb.mvp.second << ")" << std::endl;
+			auto ref_frame = ref_frame_list[0];
+			auto y_mb_xy = ref_frame.transform_mbxy_into_framexy<Y_BLOCK>(mb);
+			auto crcb_mb_xy = ref_frame.transform_mbxy_into_framexy<Cr_BLOCK>(mb);
+			y_mb_xy.first -= mb.mv.first;
+			y_mb_xy.second -= mb.mv.second;
+			crcb_mb_xy.first -= mb.mv.first;
+			crcb_mb_xy.second -= mb.mv.second;
+			if (mb.mv.first == 0 && mb.mv.second == 0 && inter_error <= 500)
+			{
+				mb.is_p_skip = true;
+				decoded_blocks.push_back(mb);
+				ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, decoded_blocks[mb.mb_index].Y);
+				ref_frame.get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, decoded_blocks[mb.mb_index].Cb);
+				ref_frame.get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, decoded_blocks[mb.mb_index].Cr);
+				continue;
+			}
+			//  QDCT
+			for (int cur_pos = 0; cur_pos < 16; cur_pos++)
+			{
+				qdct_luma4x4_intra(mb.get_Y_4x4_block(cur_pos));
+			}
+			qdct_chroma8x8_intra(mb.Cb);
+			qdct_chroma8x8_intra(mb.Cr);
+			decoded_blocks.push_back(mb);
+			for (int cur_pos = 0; cur_pos < 16; cur_pos++)
+			{
+				inv_qdct_luma4x4_intra(decoded_blocks.back().get_Y_4x4_block(cur_pos));
+			}
+
+			inv_qdct_chroma8x8_intra(decoded_blocks[mb.mb_index].Cb);
+			inv_qdct_chroma8x8_intra(decoded_blocks[mb.mb_index].Cr);
+			Block16x16 y_block;
+			Block8x8 cb_block;
+			Block8x8 cr_block;
+			ref_frame_list[0].get_block_from_framexy<Y_BLOCK>(y_mb_xy, y_block);
+			ref_frame_list[0].get_block_from_framexy<Cb_BLOCK>(crcb_mb_xy, cb_block);
+			ref_frame_list[0].get_block_from_framexy<Cr_BLOCK>(crcb_mb_xy, cr_block);
+			std::transform(decoded_blocks[mb.mb_index].Y.begin(), decoded_blocks[mb.mb_index].Y.end(), y_block.begin(), decoded_blocks[mb.mb_index].Y.begin(), std::plus<int>());
+			std::transform(decoded_blocks[mb.mb_index].Cb.begin(), decoded_blocks[mb.mb_index].Cb.end(), cb_block.begin(), decoded_blocks[mb.mb_index].Cb.begin(), std::plus<int>());
+			std::transform(decoded_blocks[mb.mb_index].Cr.begin(), decoded_blocks[mb.mb_index].Cr.end(), cr_block.begin(), decoded_blocks[mb.mb_index].Cr.begin(), std::plus<int>());
+			for (auto& elem : decoded_blocks[mb.mb_index].Y)
+			{
+				elem = std::max(16,std::min(235,elem));
+			}
+			for (auto& elem : decoded_blocks[mb.mb_index].Cb)
+			{
+				elem = std::max(16,std::min(240,elem));
+			}
+			for (auto& elem : decoded_blocks[mb.mb_index].Cr)
+			{
+				elem = std::max(16,std::min(240,elem));
+			}
+		}
+		else
+		{
+			decoded_blocks.push_back(mb);
+			MacroBlock origin_block = mb;
+			auto error_luma = encode_Y_block(mb, decoded_blocks, frame);
+			auto error_chroma = encode_Cr_Cb_block(mb, decoded_blocks, frame);
+			if (error_luma > 2000 || error_chroma > 1000)
+			{
+				f_logger.log(Level::VERBOSE, "error exceeded: luma " + std::to_string(error_luma) + " chroma: " + std::to_string(error_chroma));
+				mb = origin_block;
+				decoded_blocks[mb.mb_index] = origin_block;
+				mb.is_I_PCM = true;
+			}
+		}
+
 		// std::cout << "before qdct" << std::endl;
 		// for (int i = 0; i < 256; i++)
 		//{
@@ -307,11 +385,6 @@ void encode_P_frame(Frame &frame)
 		//		std::cout << std::endl;
 		//	}
 		// }
-		//  QDCT
-		for (int cur_pos = 0; cur_pos < 16; cur_pos++)
-		{
-			qdct_luma4x4_intra(mb.get_Y_4x4_block(cur_pos));
-		}
 
 		// qdct_luma16x16_intra(mb.Y);
 		// std::cout << "after qdct" << std::endl;
@@ -323,23 +396,12 @@ void encode_P_frame(Frame &frame)
 		//		std::cout << std::endl;
 		//	}
 		//}
-		qdct_chroma8x8_intra(mb.Cb);
-		qdct_chroma8x8_intra(mb.Cr);
-		// decoded_blocks[mb.mb_index] = mb;
-		//  inv_qdct_luma16x16_intra(decoded_blocks[mb.mb_index].Y);
-		//  inv_qdct_chroma8x8_intra(decoded_blocks[mb.mb_index].Cb);
-		//  inv_qdct_chroma8x8_intra(decoded_blocks[mb.mb_index].Cr);
-		//  Block16x16 y_block;
-		//  Block8x8 cb_block;
-		//  Block8x8 cr_block;
-		//  ref_frame_list[0].get_block_from_framexy<Y_BLOCK>(mb.mv, y_block);
-		//  ref_frame_list[0].get_block_from_framexy<Cb_BLOCK>(mb.mv, cb_block);
-		//  ref_frame_list[0].get_block_from_framexy<Cr_BLOCK>(mb.mv, cr_block);
-		//  std::transform(decoded_blocks[mb.mb_index].Y.begin(), decoded_blocks[mb.mb_index].Y.end(), y_block.begin(), decoded_blocks[mb.mb_index].Y.begin(), std::plus<int>());
-		//  std::transform(decoded_blocks[mb.mb_index].Cb.begin(), decoded_blocks[mb.mb_index].Cb.end(), cb_block.begin(), decoded_blocks[mb.mb_index].Cb.begin(), std::plus<int>());
-		//  std::transform(decoded_blocks[mb.mb_index].Cr.begin(), decoded_blocks[mb.mb_index].Cr.end(), cr_block.begin(), decoded_blocks[mb.mb_index].Cr.begin(), std::plus<int>());
+
 		//  mb.is_intra16x16 = true;
 	}
+	deblocking_filter(decoded_blocks, frame);
+	//ref_frame_list[0] = frame;
+	//ref_frame_list[0].mbs = decoded_blocks;
 }
 void encode_I_frame(Frame &frame)
 {
@@ -398,7 +460,7 @@ int encode_Y_block(MacroBlock &mb, std::vector<MacroBlock> &decoded_blocks, Fram
 		for (auto &m : mb.intra4x4_Y_mode)
 			mode += " " + std::to_string(static_cast<int>(m));
 		f_logger.log(Level::DEBUG, "luma intra4x4\terror: " + std::to_string(error_intra4x4) + mode);
-		mb.is_intra16x16 = false;
+		mb.is_intra4x4 = true;
 		return error_intra4x4;
 	}
 	else
@@ -441,9 +503,10 @@ int encode_Y_intra16x16_block(MacroBlock &mb, std::vector<MacroBlock> &decoded_b
 						   get_decoded_Y_block(MB_NEIGHBOR_L),
 						   mode);
 
-	for (int i = 0; i < 16; i++)
-		for (int j = 0; j < 16; j++)
-			decoded_blocks.at(mb.mb_index).Y[i * 16 + j] = std::max(16, std::min(235, decoded_blocks.at(mb.mb_index).Y[i * 16 + j]));
+	for (auto &elem : decoded_blocks.at(mb.mb_index).Y)
+	{
+		elem = std::max(16, std::min(235, elem));
+	}
 
 	return error;
 }

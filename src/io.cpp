@@ -366,23 +366,29 @@ Bitstream Writer::pic_parameter_set_rbsp()
 Bitstream Writer::slice_layer_without_partitioning_rbsp(const int _frame_num, Frame &frame)
 {
 	Bitstream sodb = slice_header(_frame_num);
-	frame.type = _frame_num == 0 ? I_PICTURE : P_PICTURE;
 	return write_slice_data(frame, sodb).rbsp_trailing_bits();
 }
 
 Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 {
 	static int bits = 0;
+	auto offset = frame.type == P_PICTURE ? 5 : 0;
+	int p_skip_count = 0;
 	for (auto &mb : frame.mbs)
 	{
+		if (mb.is_p_skip)
+		{
+			p_skip_count++;
+			continue;
+		}
 		if (frame.type == P_PICTURE)
 		{
-			sodb += ue(0); // skip_run
-			sodb += ue(0); // P type P_L0_L0_16x16
+			sodb += ue(p_skip_count); // skip_run
+			p_skip_count = 0;
 		}
-		else if (mb.is_I_PCM)
+		if (mb.is_I_PCM)
 		{
-			sodb += ue(25); // I_PCM type is 25
+			sodb += ue(25 + offset); // I_PCM type is 25
 
 			while (!sodb.byte_align())
 				sodb += Bitstream(false);
@@ -413,14 +419,17 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 				type += 8;
 
 			type += static_cast<unsigned int>(mb.intra16x16_Y_mode);
-			sodb += ue(type);
+			sodb += ue(type + offset);
 		}
 
-		else // Intra 4x4 mode
+		else if (mb.is_intra4x4) // Intra 4x4 mode
 		{
-			sodb += ue(0); // mb_type
+			sodb += ue(0 + offset); // mb_type
 		}
-
+		else
+		{
+			sodb += ue(0); // P_L0_16x16
+		}
 		sodb += mb_pred(mb, frame);
 
 		if (!mb.is_intra16x16)
@@ -458,14 +467,14 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 Bitstream Writer::mb_pred(MacroBlock &mb, Frame &frame)
 {
 	Bitstream sodb;
-	if (frame.type == P_PICTURE)
+	if (frame.type == P_PICTURE && !mb.is_intra16x16 && !mb.is_intra4x4)
 	{
 		sodb += se(mb.mv.first - mb.mvp.first);
 		sodb += se(mb.mv.second - mb.mvp.second);
 	}
-	else if (frame.type == I_PICTURE)
+	else
 	{
-		if (!mb.is_intra16x16)
+		if (mb.is_intra4x4)
 		{
 			for (int cur_pos = 0; cur_pos != 16; cur_pos++)
 			{
