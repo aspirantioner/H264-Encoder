@@ -34,9 +34,9 @@ public:
 
 using Block8x8 = std::array<int, 8 * 8>;
 using Block16x16 = std::array<int, 16 * 16>;
-using Block16x8 = std::array<int, 16 * 8>;
-using Block8x16 = std::array<int, 8 * 16>;
-using Block8x4 = std::array<int, 8 * 4>;
-using Block4x8 = std::array<int, 4 * 8>;
-using Block4x4 = std::array<int, 4 * 4>;
+//using Block16x8 = std::array<int, 16 * 8>;
+//using Block8x16 = std::array<int, 8 * 16>;
+//using Block8x4 = std::array<int, 8 * 4>;
+//using Block4x8 = std::array<int, 4 * 8>;
+//using Block4x4 = std::array<int, 4 * 4>;
 #endif

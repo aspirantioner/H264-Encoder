@@ -215,16 +215,19 @@ void get_mvp(MacroBlock &mb, Frame &frame)
 		mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col].mv.first);
 		mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col].mv.second);
 	}
-	if (mb.mb_row > 0 && mb.mb_col < frame.nb_mb_cols - 1 && frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].is_inter)
+	if (mb.mb_row > 0 && mb.mb_col < frame.nb_mb_cols - 1)
 	{
-		mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].mv.first);
-		mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].mv.second);
+		if (frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].is_inter)
+		{
+			mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].mv.first);
+			mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col + 1].mv.second);
+		}
 	}
-	// else if (mb.mb_row > 0 && mb.mb_col > 0 && frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].is_inter)
-	//{
-	//	mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.first);
-	//	mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.second);
-	// }
+	else if (mb.mb_row > 0 && mb.mb_col > 0 && frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].is_inter)
+	{
+		mv_x.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.first);
+		mv_y.push_back(frame.mbs[(mb.mb_row - 1) * frame.nb_mb_cols + mb.mb_col - 1].mv.second);
+	}
 
 	if (mv_x.size() == 0)
 	{
@@ -285,6 +288,8 @@ void encode_P_frame(Frame &frame)
 		//	}
 		// }
 		auto inter_error = get_mv(mb, ref_frame_list[0], luma_res, cb_res, cr_res);
+		mb.mv.first *= 4;
+		mb.mv.second *= 4;
 		std::cout << "mv is " << "(" << mb.mv.first << "," << mb.mv.second << ")" << std::endl;
 		// std::cout << "after P pred " <<"("<<mb.mv.first<<","<<mb.mv.second<<")"<< std::endl;
 		// for (int i = 0; i < 256; i++)
@@ -348,17 +353,17 @@ void encode_P_frame(Frame &frame)
 			std::transform(decoded_blocks[mb.mb_index].Y.begin(), decoded_blocks[mb.mb_index].Y.end(), y_block.begin(), decoded_blocks[mb.mb_index].Y.begin(), std::plus<int>());
 			std::transform(decoded_blocks[mb.mb_index].Cb.begin(), decoded_blocks[mb.mb_index].Cb.end(), cb_block.begin(), decoded_blocks[mb.mb_index].Cb.begin(), std::plus<int>());
 			std::transform(decoded_blocks[mb.mb_index].Cr.begin(), decoded_blocks[mb.mb_index].Cr.end(), cr_block.begin(), decoded_blocks[mb.mb_index].Cr.begin(), std::plus<int>());
-			for (auto& elem : decoded_blocks[mb.mb_index].Y)
+			for (auto &elem : decoded_blocks[mb.mb_index].Y)
 			{
-				elem = std::max(16,std::min(235,elem));
+				elem = std::max(16, std::min(235, elem));
 			}
-			for (auto& elem : decoded_blocks[mb.mb_index].Cb)
+			for (auto &elem : decoded_blocks[mb.mb_index].Cb)
 			{
-				elem = std::max(16,std::min(240,elem));
+				elem = std::max(16, std::min(240, elem));
 			}
-			for (auto& elem : decoded_blocks[mb.mb_index].Cr)
+			for (auto &elem : decoded_blocks[mb.mb_index].Cr)
 			{
-				elem = std::max(16,std::min(240,elem));
+				elem = std::max(16, std::min(240, elem));
 			}
 		}
 		else
@@ -400,8 +405,8 @@ void encode_P_frame(Frame &frame)
 		//  mb.is_intra16x16 = true;
 	}
 	deblocking_filter(decoded_blocks, frame);
-	//ref_frame_list[0] = frame;
-	//ref_frame_list[0].mbs = decoded_blocks;
+	// ref_frame_list[0] = frame;
+	// ref_frame_list[0].mbs = decoded_blocks;
 }
 void encode_I_frame(Frame &frame)
 {

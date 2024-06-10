@@ -20,7 +20,6 @@ enum
 	P_PICTURE,
 	B_PICTURE,
 	I_PICTURE,
-
 };
 
 enum BLOCKTYPE
