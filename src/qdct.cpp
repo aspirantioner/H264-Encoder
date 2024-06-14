@@ -344,6 +344,7 @@ inline void forward_qdct(T& block, const int BLOCK_SIZE, const int QP) {
     }
   }
 
+  //read in DC
   int mat16[4][4], mat8[2][2];
   if (BLOCK_SIZE == 16) {
     for (int i = 0; i < 4; i++) {

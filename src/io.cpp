@@ -401,7 +401,7 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 
 			for (auto &cr : mb.Cr)
 				sodb += Bitstream(static_cast<std::uint8_t>(cr), 8);
-
+			goto count;
 			continue;
 		}
 
@@ -426,6 +426,7 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 		{
 			sodb += ue(0 + offset); // mb_type
 		}
+
 		else
 		{
 			sodb += ue(0); // P_L0_16x16
@@ -454,6 +455,7 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 			sodb += se(0); // mb_qp_delta
 			sodb += mb.bitstream;
 		}
+	count:
 		if (frame.type == P_PICTURE)
 		{
 			std::cout << mb.mb_index << " output " << sodb.nb_bits - bits << "bits" << std::endl;

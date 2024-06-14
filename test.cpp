@@ -2,6 +2,10 @@
 using namespace std;
 #include <array>
 #include <vector>
+#include "json.hpp"
+#include <fstream>
+#include <string>
+using json = nlohmann::json;
 using Block8x8 = std::array<int, 8 * 8>;
 using Block16x16 = std::array<int, 16 * 16>;
 enum BLOCKTYPE
@@ -56,7 +60,16 @@ int main(int argc, char *argv[])
     //{
     //    std::cout << vec1[i] << std::endl;
     //}
-    typename TypeBlockSelector<Cb_BLOCK>::type b;
-    std::cout << b.size() << std::endl;
+    std::fstream file("./h264.json");
+    if(!file.is_open()){
+        std::cout << "open file error!" << std::endl;
+        return -1;
+    }
+    std::stringstream buffer;
+    buffer << file.rdbuf();
+    file.close();
+    std::string content = buffer.str();
+    auto parsed = json::parse(content);
+    std::cout << parsed["pps"]["profile_idc"] << std::endl;
     return 0;
 }

@@ -1,7 +1,7 @@
 #include "frame_encode.h"
 #include <algorithm>
 #define SUPPORT_INTRA4x4 false
-#define SEARCH_STEP_LEN 1
+#define SEARCH_STEP_LEN 4
 Log f_logger("Frame encode");
 std::vector<Frame> ref_frame_list(1);
 
@@ -16,6 +16,7 @@ int get_mv(MacroBlock &mb, Frame &ref_frame, Block16x16 &luma_res, Block8x8 &cb_
 	Block8x8 cr_pred;
 	Block8x8 cb_pred;
 	auto y_mb_xy = ref_frame.transform_mbxy_into_framexy<Y_BLOCK>(mb);
+	auto old_y_mb_xy = y_mb_xy;
 	auto crcb_mb_xy = ref_frame.transform_mbxy_into_framexy<Cr_BLOCK>(mb);
 
 	ref_frame.get_block_from_framexy<Y_BLOCK>(y_mb_xy, luma_pred);
@@ -83,6 +84,7 @@ int get_mv(MacroBlock &mb, Frame &ref_frame, Block16x16 &luma_res, Block8x8 &cb_
 		y_error = 0;
 		cr_cb_error = 0;
 	}
+	y_mb_xy = old_y_mb_xy;
 	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
 	{
 		y_mb_xy.second++;
@@ -120,6 +122,7 @@ int get_mv(MacroBlock &mb, Frame &ref_frame, Block16x16 &luma_res, Block8x8 &cb_
 		y_error = 0;
 		cr_cb_error = 0;
 	}
+	y_mb_xy = old_y_mb_xy;
 	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
 	{
 		y_mb_xy.first--;
@@ -157,6 +160,7 @@ int get_mv(MacroBlock &mb, Frame &ref_frame, Block16x16 &luma_res, Block8x8 &cb_
 		y_error = 0;
 		cr_cb_error = 0;
 	}
+	y_mb_xy = old_y_mb_xy;
 	for (int i = 1; i <= SEARCH_STEP_LEN; i++)
 	{
 		y_mb_xy.first++;
@@ -194,6 +198,7 @@ int get_mv(MacroBlock &mb, Frame &ref_frame, Block16x16 &luma_res, Block8x8 &cb_
 		y_error = 0;
 		cr_cb_error = 0;
 	}
+	y_mb_xy = old_y_mb_xy;
 	std::cout << "y sad is " << min_y_sad << " cb_cr sad is " << min_cr_cb_sad << std::endl;
 	// mb.Y = luma_res;
 	// mb.Cb = cb_res;
@@ -288,8 +293,8 @@ void encode_P_frame(Frame &frame)
 		//	}
 		// }
 		auto inter_error = get_mv(mb, ref_frame_list[0], luma_res, cb_res, cr_res);
-		mb.mv.first *= 4;
-		mb.mv.second *= 4;
+		//mb.mv.first *= 4;
+		//mb.mv.second *= 4;
 		std::cout << "mv is " << "(" << mb.mv.first << "," << mb.mv.second << ")" << std::endl;
 		// std::cout << "after P pred " <<"("<<mb.mv.first<<","<<mb.mv.second<<")"<< std::endl;
 		// for (int i = 0; i < 256; i++)
@@ -436,6 +441,10 @@ void encode_I_frame(Frame &frame)
 	// in-loop deblocking filter
 	deblocking_filter(decoded_blocks, frame);
 	ref_frame_list[0] = frame;
+	ref_frame_list[0].Y.swap(frame.Y);
+	ref_frame_list[0].Cb.swap(frame.Cb);
+	ref_frame_list[0].Cr.swap(frame.Cr);
+	ref_frame_list[0].pixel_interpolate();
 }
 
 int encode_Y_block(MacroBlock &mb, std::vector<MacroBlock> &decoded_blocks, Frame &frame)

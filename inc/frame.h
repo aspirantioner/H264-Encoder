@@ -7,6 +7,8 @@
 #include "macroblock.h"
 #include <cstdlib>
 #include <ctime>
+#include <numeric>
+using namespace std;
 enum
 {
 	MB_NEIGHBOR_UL,
@@ -96,9 +98,12 @@ public:
 	std::vector<int> Y;
 	std::vector<int> Cr;
 	std::vector<int> Cb;
+	std::vector<int> inter_y;
+	std::vector<int> inter_cb;
+	std::vector<int> inter_cr;
 	std::vector<MacroBlock> mbs;
 	Frame(){};
-	//Frame(const PadFrame &);
+	// Frame(const PadFrame &);
 	void operator=(const Frame &frame)
 	{
 		height = frame.height;
@@ -129,59 +134,261 @@ public:
 	{
 		return mbs[y * nb_mb_cols + x].Cb;
 	}
+	int *get_y_pixel(int i, int j)
+	{
+		return &(Y[i * width + j]);
+	}
+	void get_6x6block(int i, int j, std::array<int, 36> &arr)
+	{
+		auto get_a_row = [&](int i, int j, int *row) -> void
+		{
+			auto iter = get_y_pixel(i, j);
+			auto len = width - j;
+			if (len >= 6)
+			{
+				std::copy(iter, iter + 6, row);
+			}
+			else
+			{
+				std::copy(iter, iter + len, row);
+				std::fill(iter + len, iter + 6, *row);
+			}
+		};
+		get_a_row(i, j, &arr[12]);
+		int index = i - 1;
+		for (int count = 0; count < 2; count++)
+		{
+			if (index < 0)
+			{
+				std::copy(&arr[12 - 6 * count], &arr[18 - 6 * count], &arr[6 - 6 * count]);
+			}
+			else
+			{
+				get_a_row(index, j, &arr[6 - 6 * count]);
+			}
+			index--;
+		}
+		index = i + 1;
+		for (int count = 0; count < 3; count++)
+		{
+			if (index >= height)
+			{
+				std::copy(&arr[12 + 6 * count], &arr[18 + 6 * count], &arr[18 + 6 * count]);
+			}
+			else
+			{
+				get_a_row(index, j, &arr[18 + 6 * count]);
+			}
+			index++;
+		}
+	}
+	void get_y_interpolate_pixel(std::array<int, 36> &arr, std::array<int, 16> &block)
+	{
+		std::array<int, 6> x_sum;
+		std::array<int, 6> y_sum;
+		auto iter = arr.begin();
+		for (int i = 0; i < 6; i++)
+		{
+			x_sum[i] = std::accumulate(iter, iter + 6, 0) / 6;
+			iter += 6;
+		}
 
+		for (int i = 0; i < 6; i++)
+		{
+			iter = arr.begin() + i;
+			y_sum[i] = 0;
+			for (int j = 0; j < 6; j++)
+			{
+				y_sum[i] += arr[i + j * 6];
+				iter += 6;
+			}
+			y_sum[i] /= 6;
+		}
+
+		block[0] = arr[14];
+		auto calculate_half_pixel = [](int *arr, int start) -> int
+		{ return arr[start] - 5 * arr[start + 1] + 20 * arr[start + 2] + 20 * arr[start + 3] - 5 * arr[start + 4] + arr[start + 5]+16; };
+		block[2] = calculate_half_pixel(&arr[0], 12) >> 5;
+		block[8] = (arr[2] - 5 * arr[8] + 20 * arr[14] + 20 * arr[20] - 5 * arr[26] + arr[32]+16) >> 5;
+		block[10] = calculate_half_pixel(&x_sum[0], 0) >> 5;
+		block[1] = (block[0] + block[2] + 1) >> 1;
+		block[3] = (block[2] + arr[15] + 1) >> 1;
+		block[9] = (block[8] + block[10] + 1) >> 1;
+		block[11] = (block[10] + y_sum[3] + 1) >> 1;
+		block[4] = (block[0] + block[8] + 1) >> 1;
+		block[6] = (block[2] + block[10] + 1) >> 1;
+		block[12] = (block[8] + arr[20] + 1) >> 1;
+		block[14] = (block[10] + x_sum[3] + 1) >> 1;
+		block[5] = (block[0] + block[10] + 1) >> 1;
+		block[7] = (block[10] + arr[15] + 1) >> 1;
+		block[13] = (block[10] + arr[20] + 1) >> 1;
+		block[15] = (block[10] + arr[21] + 1) >> 1;
+		for (auto &elem : block)
+		{
+			elem = std::min(255, std::max(0, elem));
+		}
+	}
+	void y_pixel_interpolate()
+	{
+		std::array<int, 36> arr;
+		std::array<int, 16> block;
+		for (int i = 0; i < height; i++)
+		{
+			for (int j = 0; j < width; j++)
+			{
+				get_6x6block(i, j, arr);
+				get_y_interpolate_pixel(arr, block);
+				auto iter = inter_y.begin() + i * width * 16 + j * 4;
+				auto block_iter = block.begin();
+				for (int i = 0; i < 16; i += 4)
+				{
+					std::copy(block_iter, block_iter + 4, iter);
+					iter += width * 4;
+					block_iter += 4;
+				}
+			}
+		}
+	}
+	template <BLOCKTYPE TYPE>
+	void get_4x4block(int i, int j, std::array<int, 4> &arr)
+	{
+		auto iter = Cr.begin() + (i * width / 2) + j;
+		if constexpr (TYPE == Cb_BLOCK)
+		{
+			iter = Cb.begin() + (i * width / 2) + j;
+		}
+		arr[0] = *iter;
+		arr[1] = *(iter + 1);
+		arr[2] = *(iter + width / 2);
+		arr[3] = *(iter + width / 2 + 1);
+	}
+	void get_cbcr_interpolate_pixel(std::array<int, 4> &arr, std::array<int, 64> &block)
+	{
+		for (int i = 0; i < 8; i++)
+		{
+			for (int j = 0; j < 8; j++)
+			{
+				block[8 * i + j] = ((8 - i) * (8 - j) * arr[0] + j * (8 - i) * arr[1] + i * (8 - j) * arr[2] + i * j * arr[3]) >> 6;
+			}
+		}
+	}
+	void cbcr_pixel_interpolate()
+	{
+		std::array<int, 4> arr;
+		std::array<int, 64> block;
+		for (int i = 0; i < height / 2; i += 2)
+		{
+			for (int j = 0; j < width / 2; j += 2)
+			{
+				get_4x4block<Cb_BLOCK>(i, j, arr);
+				get_cbcr_interpolate_pixel(arr, block);
+				auto iter = inter_cb.begin() + i * width * 8 + j * 4;
+				auto block_iter = block.begin();
+				for (int i = 0; i < 64; i += 8)
+				{
+					std::copy(block_iter, block_iter + 8, iter);
+					iter += width * 2;
+					block_iter += 8;
+				}
+				get_4x4block<Cr_BLOCK>(i, j, arr);
+				get_cbcr_interpolate_pixel(arr, block);
+				iter = inter_cr.begin() + i * width * 8 + j * 4;
+				block_iter = block.begin();
+				for (int i = 0; i < 64; i += 8)
+				{
+					std::copy(block_iter, block_iter + 8, iter);
+					iter += width * 2;
+					block_iter += 8;
+				}
+			}
+		}
+	}
+	void pixel_interpolate()
+	{
+		int size = (width * height) << 4;
+		inter_y.resize(size);
+		inter_cb.resize(size >> 2);
+		inter_cr.resize(size >> 2);
+		y_pixel_interpolate();
+		cbcr_pixel_interpolate();
+	}
 	template <BLOCKTYPE TYPE>
 	std::pair<int, int> transform_mbxy_into_framexy(MacroBlock &mb)
 	{
 		constexpr int N = (TYPE == Y_BLOCK ? 16 : 8);
-		return std::pair<int, int>(mb.mb_col * N, mb.mb_row * N);
+		return std::pair<int, int>(mb.mb_col * N * 4, mb.mb_row * N * 4);
 	}
 	template <BLOCKTYPE TYPE>
 	bool is_valid_xy(int x, int y)
 	{
 
 		constexpr int N = (TYPE == Y_BLOCK ? 16 : 8);
-		constexpr int scale = (TYPE == Y_BLOCK ? 1 : 2);
-		return x >= 0 && y >= 0 && x + N <= width / scale && y + N <= height / scale;
+		constexpr int scale = (TYPE == Y_BLOCK ? 4 : 2);
+		return x >= 0 && y >= 0 && x + N <= width * scale && y + N <= height * scale;
 	}
 	template <BLOCKTYPE TYPE>
 	void get_block_from_framexy(std::pair<int, int> frame_xy, typename TypeBlockSelector<TYPE>::type &block)
 	{
 		constexpr uint8_t N = (TYPE == Y_BLOCK ? 16 : 8);
-		auto row_bottom = frame_xy.second % N;
-		auto row_top = N - row_bottom;
-		auto col_right = frame_xy.first % N;
-		auto col_left = N - col_right;
-		auto x = frame_xy.first / N;
-		auto y = frame_xy.second / N;
-		if (row_bottom == 0 && col_right == 0)
+		auto inter_width = width << 2;
+		auto inter_height = height << 2;
+		auto x = frame_xy.first;
+		auto y = frame_xy.second;
+		if constexpr (TYPE != Y_BLOCK)
 		{
-			// std::cout << "get while block" << std::endl;
-			auto target_block = get_block<TYPE>(x, y);
-			std::copy(target_block.begin(), target_block.end(), block.begin());
-			return;
+			inter_width /= 2;
+			inter_height /= 2;
 		}
+		auto iter = inter_y.begin() + x + y * inter_width;
+		if constexpr (TYPE == Cr_BLOCK)
+		{
+			iter = inter_cr.begin() + x + y * inter_width;
+		}
+		else if constexpr (TYPE == Cb_BLOCK)
+		{
+			iter = inter_cb.begin() + x + y * inter_width;
+		}
+		auto block_iter = block.begin();
+		for (int i = 0; i < N; i++)
+		{
+			std::copy(iter, iter + N, block_iter);
+			iter += inter_width;
+			block_iter += N;
+		}
+		// auto row_bottom = frame_xy.second % N;
+		// auto row_top = N - row_bottom;
+		// auto col_right = frame_xy.first % N;
+		// auto col_left = N - col_right;
+		// auto x = frame_xy.first / N;
+		// auto y = frame_xy.second / N;
+		// if (row_bottom == 0 && col_right == 0)
+		//{
+		//	// std::cout << "get while block" << std::endl;
+		//	auto target_block = get_block<TYPE>(x, y);
+		//	std::copy(target_block.begin(), target_block.end(), block.begin());
+		//	return;
+		// }
 
-		auto UL_block = row_top * col_left != 0 ? get_block<TYPE>(x, y) : block;
-		auto BL_block = row_bottom * col_left != 0 ? get_block<TYPE>(x, y + 1) : block;
-		auto UR_block = row_top * col_right != 0 ? get_block<TYPE>(x + 1, y) : block;
-		auto BR_block = row_bottom * col_right != 0 ? get_block<TYPE>(x + 1, y + 1) : block;
+		// auto UL_block = row_top * col_left != 0 ? get_block<TYPE>(x, y) : block;
+		// auto BL_block = row_bottom * col_left != 0 ? get_block<TYPE>(x, y + 1) : block;
+		// auto UR_block = row_top * col_right != 0 ? get_block<TYPE>(x + 1, y) : block;
+		// auto BR_block = row_bottom * col_right != 0 ? get_block<TYPE>(x + 1, y + 1) : block;
 
-		// std::cout << row_bottom << "\t" << row_top << std::endl;
-		for (int i = row_bottom; i < N; i++)
-		{
-			// std::cout << "copy " << i - row_bottom << "row" << std::endl;
-			std::copy(UL_block.begin() + i * N + col_right, UL_block.begin() + (i + 1) * N, block.begin() + (i - row_bottom) * N);
-			std::copy(UR_block.begin() + i * N, UR_block.begin() + i * N + col_right, block.begin() + (i - row_bottom) * N + col_left);
-		}
-		// std::cout << "top row has copyed!" << std::endl;
-		for (int i = 0; i < row_bottom; i++)
-		{
-			// std::cout << "copy " << i + row_top << "row" << std::endl;
-			std::copy(BL_block.begin() + i * N + col_right, BL_block.begin() + (i + 1) * N, block.begin() + (i + row_top) * N);
-			std::copy(BR_block.begin() + i * N, BR_block.begin() + i * N + col_right, block.begin() + (i + row_top) * N + col_left);
-		}
-		// std::cout << "bottom row has copyed!" << std::endl;
+		//// std::cout << row_bottom << "\t" << row_top << std::endl;
+		// for (int i = row_bottom; i < N; i++)
+		//{
+		//	// std::cout << "copy " << i - row_bottom << "row" << std::endl;
+		//	std::copy(UL_block.begin() + i * N + col_right, UL_block.begin() + (i + 1) * N, block.begin() + (i - row_bottom) * N);
+		//	std::copy(UR_block.begin() + i * N, UR_block.begin() + i * N + col_right, block.begin() + (i - row_bottom) * N + col_left);
+		// }
+		//// std::cout << "top row has copyed!" << std::endl;
+		// for (int i = 0; i < row_bottom; i++)
+		//{
+		//	// std::cout << "copy " << i + row_top << "row" << std::endl;
+		//	std::copy(BL_block.begin() + i * N + col_right, BL_block.begin() + (i + 1) * N, block.begin() + (i + row_top) * N);
+		//	std::copy(BR_block.begin() + i * N, BR_block.begin() + i * N + col_right, block.begin() + (i + row_top) * N + col_left);
+		// }
+		//// std::cout << "bottom row has copyed!" << std::endl;
 	}
 	int get_neighbor_index(const int, const int);
 	template <BLOCKTYPE TYPE>
