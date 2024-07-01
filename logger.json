@@ -1,0 +1,6 @@
+{
+    "name":"H264",
+    "level":1,
+    "file":"test.log",
+    "output_detail_list":["time","line",]
+}

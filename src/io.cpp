@@ -378,6 +378,7 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 	{
 		if (mb.is_p_skip)
 		{
+			std::cout << "the " << mb.mb_index << " block is skip block!" << std::endl;
 			p_skip_count++;
 			continue;
 		}
@@ -462,7 +463,9 @@ Bitstream Writer::write_slice_data(Frame &frame, Bitstream &sodb)
 			bits = sodb.nb_bits;
 		}
 	}
-
+	if(p_skip_count){
+		sodb += ue(p_skip_count);
+	}
 	return sodb;
 }
 

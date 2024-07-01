@@ -103,7 +103,6 @@ public:
 	std::vector<int> inter_cr;
 	std::vector<MacroBlock> mbs;
 	Frame(){};
-	// Frame(const PadFrame &);
 	void operator=(const Frame &frame)
 	{
 		height = frame.height;
@@ -111,6 +110,41 @@ public:
 		nb_mb_cols = frame.nb_mb_cols;
 		nb_mb_rows = frame.nb_mb_rows;
 		type = frame.type;
+	}
+	template <BLOCKTYPE TYPE>
+	void fill(typename TypeBlockSelector<TYPE>::type& block,int mb_index){
+		auto row = mb_index / nb_mb_cols;
+		auto col = mb_index % nb_mb_cols;
+		if constexpr (TYPE ==Y_BLOCK){
+			auto iter = Y.begin() + row * 16 * width + col * 16;
+			auto start = block.begin();
+			for (int i = 0; i < 16; i++)
+			{
+				std::copy(start,start+16,iter);
+				iter += width;
+				start += 16;
+			}
+		}
+		else if constexpr (TYPE==Cr_BLOCK){
+			auto iter = Cr.begin() + row * 4 * width + col * 4;
+			auto start = block.begin();
+			for (int i = 0; i < 8; i++)
+			{
+				std::copy(start,start+8,iter);
+				iter += (width>>1);
+				start += 8;
+			}
+		}
+		else if constexpr (TYPE==Cb_BLOCK){
+			auto iter = Cb.begin() + row * 4 * width + col * 4;
+			auto start = block.begin();
+			for (int i = 0; i < 8; i++)
+			{
+				std::copy(start,start+8,iter);
+				iter += (width>>1);
+				start += 8;
+			}
+		}
 	}
 	template <BLOCKTYPE TYPE>
 	typename TypeBlockSelector<TYPE>::type &get_block(int x, int y)
@@ -355,40 +389,6 @@ public:
 			iter += inter_width;
 			block_iter += N;
 		}
-		// auto row_bottom = frame_xy.second % N;
-		// auto row_top = N - row_bottom;
-		// auto col_right = frame_xy.first % N;
-		// auto col_left = N - col_right;
-		// auto x = frame_xy.first / N;
-		// auto y = frame_xy.second / N;
-		// if (row_bottom == 0 && col_right == 0)
-		//{
-		//	// std::cout << "get while block" << std::endl;
-		//	auto target_block = get_block<TYPE>(x, y);
-		//	std::copy(target_block.begin(), target_block.end(), block.begin());
-		//	return;
-		// }
-
-		// auto UL_block = row_top * col_left != 0 ? get_block<TYPE>(x, y) : block;
-		// auto BL_block = row_bottom * col_left != 0 ? get_block<TYPE>(x, y + 1) : block;
-		// auto UR_block = row_top * col_right != 0 ? get_block<TYPE>(x + 1, y) : block;
-		// auto BR_block = row_bottom * col_right != 0 ? get_block<TYPE>(x + 1, y + 1) : block;
-
-		//// std::cout << row_bottom << "\t" << row_top << std::endl;
-		// for (int i = row_bottom; i < N; i++)
-		//{
-		//	// std::cout << "copy " << i - row_bottom << "row" << std::endl;
-		//	std::copy(UL_block.begin() + i * N + col_right, UL_block.begin() + (i + 1) * N, block.begin() + (i - row_bottom) * N);
-		//	std::copy(UR_block.begin() + i * N, UR_block.begin() + i * N + col_right, block.begin() + (i - row_bottom) * N + col_left);
-		// }
-		//// std::cout << "top row has copyed!" << std::endl;
-		// for (int i = 0; i < row_bottom; i++)
-		//{
-		//	// std::cout << "copy " << i + row_top << "row" << std::endl;
-		//	std::copy(BL_block.begin() + i * N + col_right, BL_block.begin() + (i + 1) * N, block.begin() + (i + row_top) * N);
-		//	std::copy(BR_block.begin() + i * N, BR_block.begin() + i * N + col_right, block.begin() + (i + row_top) * N + col_left);
-		// }
-		//// std::cout << "bottom row has copyed!" << std::endl;
 	}
 	int get_neighbor_index(const int, const int);
 	template <BLOCKTYPE TYPE>

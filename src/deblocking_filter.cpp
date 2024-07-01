@@ -41,22 +41,23 @@ void deblock_Y_vertical(int cur_pos, MacroBlock &mb, std::vector<MacroBlock> &de
   }
   temp_pos = MacroBlock::convert_table[temp_pos];
 
+  // 整个帧最左边缘不用
   if (index == -1)
     return;
 
   Block4x4 blockQ = decoded_blocks.at(mb.mb_index).get_Y_4x4_block(cur_pos);
-  Block4x4 blockP = decoded_blocks.at(mb.mb_index).get_Y_4x4_block(temp_pos);
-  if (index != mb.mb_index)
-    blockP = decoded_blocks.at(index).get_Y_4x4_block(temp_pos);
+  Block4x4 blockP = decoded_blocks.at(index).get_Y_4x4_block(temp_pos); // 左侧相邻宏块
+  // if (index != mb.mb_index)
+  //   blockP = decoded_blocks.at(index).get_Y_4x4_block(temp_pos);
 
   // is_intra
   int bs;
-  if (is_boundary)
+  if (is_boundary) // 宏块边沿
     bs = 4;
-  else
+  else // 子块边沿
     bs = 3;
 
-  int qPav = (LUMA_QP + LUMA_QP) >> 1;
+  int qPav = (LUMA_QP + LUMA_QP + 1) >> 1;
   for (int i = 0; i != 4; i++)
     filter_Y(bs, qPav, blockP[i * 4], blockP[i * 4 + 1], blockP[i * 4 + 2], blockP[i * 4 + 3], blockQ[i * 4], blockQ[i * 4 + 1], blockQ[i * 4 + 2], blockQ[i * 4 + 3]);
 }
@@ -71,7 +72,7 @@ void deblock_Y_horizontal(int cur_pos, MacroBlock &mb, std::vector<MacroBlock> &
   if (0 <= real_pos && real_pos <= 3)
   {
     is_boundary = true;
-    index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_L);
+    index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_U);
     temp_pos = 12 + real_pos;
   }
   else
@@ -96,7 +97,7 @@ void deblock_Y_horizontal(int cur_pos, MacroBlock &mb, std::vector<MacroBlock> &
   else
     bs = 3;
 
-  int qPav = (LUMA_QP + LUMA_QP) >> 1;
+  int qPav = (LUMA_QP + LUMA_QP + 1) >> 1;
   for (int i = 0; i != 4; i++)
     filter_Y(bs, qPav, blockP[i * 4], blockP[i * 4 + 1], blockP[i * 4 + 2], blockP[i * 4 + 3], blockQ[i * 4], blockQ[i * 4 + 1], blockQ[i * 4 + 2], blockQ[i * 4 + 3]);
 }
@@ -139,7 +140,7 @@ void deblock_Cr_Cb_vertical(int cur_pos, MacroBlock &mb, std::vector<MacroBlock>
   else
     bs = 3;
 
-  int qPav = (CHROMA_QP + CHROMA_QP) >> 1;
+  int qPav = (CHROMA_QP + CHROMA_QP + 1) >> 1;
   for (int i = 0; i != 4; i++)
   {
     filter_Cr_Cb(bs, qPav, blockP_Cr[i * 4], blockP_Cr[i * 4 + 1], blockP_Cr[i * 4 + 2], blockP_Cr[i * 4 + 3], blockQ_Cr[i * 4], blockQ_Cr[i * 4 + 1], blockQ_Cr[i * 4 + 2], blockQ_Cr[i * 4 + 3]);
@@ -156,7 +157,7 @@ void deblock_Cr_Cb_horizontal(int cur_pos, MacroBlock &mb, std::vector<MacroBloc
   if (0 <= cur_pos && cur_pos <= 1)
   {
     is_boundary = true;
-    index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_L);
+    index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_U);
     temp_pos = cur_pos + 2;
   }
   else
@@ -185,7 +186,7 @@ void deblock_Cr_Cb_horizontal(int cur_pos, MacroBlock &mb, std::vector<MacroBloc
   else
     bs = 3;
 
-  int qPav = (CHROMA_QP + CHROMA_QP) >> 1;
+  int qPav = (CHROMA_QP + CHROMA_QP + 1) >> 1;
   for (int i = 0; i != 4; i++)
   {
     filter_Cr_Cb(bs, qPav, blockP_Cr[i * 4], blockP_Cr[i * 4 + 1], blockP_Cr[i * 4 + 2], blockP_Cr[i * 4 + 3], blockQ_Cr[i * 4], blockQ_Cr[i * 4 + 1], blockQ_Cr[i * 4 + 2], blockQ_Cr[i * 4 + 3]);
@@ -209,6 +210,7 @@ int clip3(int l, int r, int value)
 
 void filter_Y(int bs, int qPav, int &p3, int &p2, int &p1, int &p0, int &q0, int &q1, int &q2, int &q3)
 {
+  // filteroffsetA/B = slice_alpha_c0_offset_div2/slice_beta_offset_div2 << 1;
   int indexA = clip3(0, 51, qPav + 0);
   int indexB = clip3(0, 51, qPav + 0);
 
@@ -217,8 +219,8 @@ void filter_Y(int bs, int qPav, int &p3, int &p2, int &p1, int &p0, int &q0, int
 
   int ap = std::abs(p2 - p0);
   int aq = std::abs(q2 - q0);
-
-  if (!(bs != 0 && std::abs(p0 - q0) < a && std::abs(p1 - p0) < b && std::abs(q1 - q0) < b))
+  bool filterSamplesFlag = (bs != 0 && std::abs(p0 - q0) < a && std::abs(p1 - p0) < b && std::abs(q1 - q0) < b);
+  if (!filterSamplesFlag)
     return;
 
   int t_p2 = p2, t_p1 = p1, t_p0 = p0;

@@ -19,7 +19,7 @@ public:
   Block16x16 Y;
   Block8x8 Cr;
   Block8x8 Cb;
-  std::pair<int, int> mv;
+  std::pair<int, int> mv = std::pair<int,int>(0,0);
   std::pair<int, int> mvp;
   std::pair<int, int> mvd;
   bool is_p_skip = false;
@@ -38,11 +38,12 @@ public:
   bool coded_block_pattern_chroma_AC = false;
 
   Bitstream bitstream;
-
+  uint32_t inter_error;
   static const std::array<int, 16> convert_table;
 
   MacroBlock(const int r, const int c) : mb_row(r), mb_col(c) {}
-  void operator=(const MacroBlock& mb){
+  void operator=(const MacroBlock &mb)
+  {
     mb_index = mb.mb_index;
     mb_col = mb.mb_col;
     mb_row = mb.mb_row;

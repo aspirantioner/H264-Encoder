@@ -13,19 +13,6 @@ void vlc_frame(Frame &frame)
 	for (auto &mb : frame.mbs)
 	{
 
-		//if (frame.type == P_PICTURE)
-		//{
-		//	std::cout << "the " << mb.mb_index << " mb block" << std::endl;
-		//	for (int i = 0; i < 256; i++)
-		//	{
-		//		std::cout << mb.Y[i] << " ";
-		//		if (i % 16 == 15)
-		//		{
-		//			std::cout << std::endl;
-		//		}
-		//	}
-		//}
-		// f_logger.log(Level::DEBUG, "mb #" + std::to_string(mb_no++));
 		std::array<int, 16> current_Y_table;
 		std::array<int, 4> current_Cb_table;
 		std::array<int, 4> current_Cr_table;
@@ -33,16 +20,15 @@ void vlc_frame(Frame &frame)
 		nc_Cb_table.push_back(current_Cb_table);
 		nc_Cr_table.push_back(current_Cr_table);
 
-		if (mb.is_I_PCM)
+		if (mb.is_I_PCM || mb.is_p_skip)
 		{
 			for (int i = 0; i != 16; i++)
-				nc_Y_table.at(mb.mb_index)[i] = 16;
+				nc_Y_table.at(mb.mb_index)[i] = mb.is_I_PCM?16:0;
 			for (int i = 0; i != 4; i++)
 			{
-				nc_Cb_table.at(mb.mb_index)[i] = 16;
-				nc_Cr_table.at(mb.mb_index)[i] = 16;
+				nc_Cb_table.at(mb.mb_index)[i] = mb.is_I_PCM?16:0;
+				nc_Cr_table.at(mb.mb_index)[i] = mb.is_I_PCM?16:0;
 			}
-
 			continue;
 		}
 
@@ -85,7 +71,6 @@ Bitstream vlc_Y_DC(MacroBlock &mb, std::vector<std::array<int, 16>> &nc_Y_table,
 {
 	int nA_index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_L);
 	int nB_index = frame.get_neighbor_index(mb.mb_index, MB_NEIGHBOR_U);
-
 	int nC;
 	if (nA_index != -1 && nB_index != -1)
 		nC = (nc_Y_table.at(nA_index)[5] + nc_Y_table.at(nB_index)[10] + 1) >> 1;
